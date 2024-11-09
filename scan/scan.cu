@@ -27,18 +27,22 @@ static inline int nextPow2(int n) {
     return n;
 }
 
+__global__ void copy(int N, int* input, int* result) {
+    
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (index < N) {
+        result[index] = input[index];
+    }
+}
 
-__global__ void scan_upsweep_kernel(int num_iter, int two_d, int two_dplus1, int* input, int* result) {
+__global__ void scan_upsweep_kernel(int num_iter, int two_d, int two_dplus1, int* result) {
     
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < num_iter) {
         int i = index * two_dplus1;
-        if (two_d == 1) {
-            result[i+two_dplus1-1] = input[i+two_d-1] + input[i+two_dplus1-1];
-        } else {
-            result[i+two_dplus1-1] += result[i+two_d-1];
-        }
+        result[i+two_dplus1-1] += reuslt[i+two_d-1];
     }
 }
 
@@ -80,13 +84,17 @@ void exclusive_scan(int* input, int N, int* result) {
     // to CUDA kernel functions (that you must write) to implement the
     // scan.
 
+    // copy input to result
+    int blocks = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    copy<<<blocks, THREADS_PER_BLOCK>>>(N, input, result);
+
     // upsweep phase
     for (int two_d = 1; two_d <= N/2; two_d*=2) {
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
-        int blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+        blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
-        scan_upsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, input, result);
+        scan_upsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
     }
 
     result[N-1] = 0;
@@ -95,7 +103,7 @@ void exclusive_scan(int* input, int N, int* result) {
     for (int two_d = N/2; two_d >= 1; two_d /= 2) {
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
-        int blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+        blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
         scan_downsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
     }
@@ -200,7 +208,7 @@ __global__ void pair_equal_adjacent(int N, int* input, int* output) {
             input_copy[copy_index + 1] = input[index + 1];
         }
 
-        __sync_threads();
+        __syncthreads();
 
         output[index] = (input_copy[copy_index] == input_copy[copy_index + 1]);
     }
@@ -225,7 +233,7 @@ __global__ void update_pair_index(int N, int* input, int* output) {
             input_copy[copy_index] = input[index];
         }
 
-        __sync_threads();
+        __syncthreads();
 
         if (input_copy[copy_index] > input_copy[copy_index - 1]) {
             output[input_copy[copy_index] - 1] = index - 1;
