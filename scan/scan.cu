@@ -94,31 +94,22 @@ void exclusive_scan(int* input, int N, int* result) {
     int blocks = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     copy<<<blocks, THREADS_PER_BLOCK>>>(N, input, result);
 	
-	std::cout << "after copy statement\n";
-
     // upsweep phase
     for (int two_d = 1; two_d <= N/2; two_d*=2) {
-		std::cout << "before upsweep " << two_d << "\n";
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
         blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 		
-
         scan_upsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
-    	std::cout << "after upsweep " << two_d << "\n";
     }
-
-    // result[N-1] = 0;
 
     // downsweep phase
     for (int two_d = N/2; two_d >= 1; two_d /= 2) {
-		std::cout << "before downsweep " << two_d << "\n";
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
         blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
         scan_downsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
-    	std::cout << "after downsweep " << two_d << "\n";
     }
 }
 
@@ -135,9 +126,7 @@ double cudaScan(int* inarray, int* end, int* resultarray) {
     int* device_result;
     int* device_input;
     int N = end - inarray;
-
-    std::cout << "N: " << N << "\n";
-
+    
     // This code rounds the arrays provided to exclusive_scan up
     // to a power of 2, but elements after the end of the original
     // input are left uninitialized and not checked for correctness.
@@ -163,8 +152,6 @@ double cudaScan(int* inarray, int* end, int* resultarray) {
     double startTime = CycleTimer::currentSeconds();
 
     exclusive_scan(device_input, N, device_result);
-
-    std::cout << "completed exclusive scan successfully\n";
 
     // Wait for completion
     cudaDeviceSynchronize();
