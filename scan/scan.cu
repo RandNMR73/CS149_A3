@@ -121,7 +121,9 @@ double cudaScan(int* inarray, int* end, int* resultarray) {
 
     int* device_result;
     int* device_input;
-    int N = end - inarray;  
+    int N = end - inarray;
+
+    std::cout << "N: " << N << "\n";
 
     // This code rounds the arrays provided to exclusive_scan up
     // to a power of 2, but elements after the end of the original
@@ -148,6 +150,8 @@ double cudaScan(int* inarray, int* end, int* resultarray) {
     double startTime = CycleTimer::currentSeconds();
 
     exclusive_scan(device_input, N, device_result);
+
+    std::cout << "completed exclusive scan successfully\n";
 
     // Wait for completion
     cudaDeviceSynchronize();
