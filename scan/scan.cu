@@ -268,31 +268,19 @@ int find_repeats(int* device_input, int length, int* device_output) {
     // the actual array length.
 
     int blocks = (length + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    std::cout << "before pair_equal_adjacent\n";
+
     // equal pair phase
     pair_equal_adjacent<<<blocks, THREADS_PER_BLOCK>>>(length, device_input, device_output);
-    
-    int* input = new int[length];
-    cudaMemcpy(input, device_output, length * sizeof(int), cudaMemcpyDeviceToHost);
-    for (int i = 0; i < length; i++) std::cout << input[i] << " ";
-    std::cout << "\n";
 
     // exclusive scan phase
-    std::cout << "before exclusive scan\n";
     exclusive_scan(device_output, length, device_input);
-    std::cout << "after exclusive scan\n";
 
-    cudaMemcpy(input, device_input, length * sizeof(int), cudaMemcpyDeviceToHost);
-    for (int i = 0; i < length; i++) std::cout << input[i] << " ";
-    std::cout << "\n";
-    
     // update output phase
     int num_repeats = 0;
     cudaMemcpy(&num_repeats, device_input + length - 1, 1 * sizeof(int), cudaMemcpyDeviceToHost);
+
     update_pair_index<<<blocks, THREADS_PER_BLOCK>>>(length, device_input, device_output);
-    std::cout << "after update_pair_index\n";
-    
-    delete[] input;
+
     return num_repeats;
 }
 
@@ -310,10 +298,7 @@ double cudaFindRepeats(int *input, int length, int *output, int *output_length) 
     cudaMalloc((void **)&device_input, rounded_length * sizeof(int));
     cudaMalloc((void **)&device_output, rounded_length * sizeof(int));
     cudaMemcpy(device_input, input, length * sizeof(int), cudaMemcpyHostToDevice);
-
-    for (int i = 0; i < length; i++) std::cout << input[i] << " ";
-    std::cout << "\n";
-
+    
     cudaDeviceSynchronize();
     double startTime = CycleTimer::currentSeconds();
     
