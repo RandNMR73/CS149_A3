@@ -91,6 +91,9 @@ void exclusive_scan(int* input, int N, int* result) {
     // scan.
 
     // copy input to result
+    int orig_N = N;
+    N = pow_above_N(orig_N);
+
     int blocks = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     copy<<<blocks, THREADS_PER_BLOCK>>>(N, input, result);
 	
@@ -203,7 +206,7 @@ __global__ void pair_equal_adjacent(int N, int* input, int* output) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int copy_index = threadIdx.x;
 
-    if (index < N - 1) {
+    if (index < N - 2) {
         if (copy_index < THREADS_PER_BLOCK - 1) {
             input_copy[copy_index] = input[index];
         } else {
@@ -266,6 +269,9 @@ int find_repeats(int* device_input, int length, int* device_output) {
     // exclusive_scan function with them. However, your implementation
     // must ensure that the results of find_repeats are correct given
     // the actual array length.
+
+    int orig_length = length;
+    length = pow_above_N(orig_length);
 
     int blocks = (length + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
