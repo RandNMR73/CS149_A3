@@ -1,2 +1,5 @@
 saxpy/objs/*
 saxpy/cudaSaxpy
+
+scan/objs/*
+scan/cudaScan
