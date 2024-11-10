@@ -126,7 +126,7 @@ double cudaScan(int* inarray, int* end, int* resultarray) {
     int* device_result;
     int* device_input;
     int N = end - inarray;
-    
+
     // This code rounds the arrays provided to exclusive_scan up
     // to a power of 2, but elements after the end of the original
     // input are left uninitialized and not checked for correctness.
@@ -211,9 +211,11 @@ __global__ void pair_equal_adjacent(int N, int* input, int* output) {
             input_copy[copy_index] = input[index];
             input_copy[copy_index + 1] = input[index + 1];
         }
+    }
 
-        __syncthreads();
+    __syncthreads();
 
+    if (index < N - 1) {
         output[index] = (input_copy[copy_index] == input_copy[copy_index + 1]);
     }
 }
@@ -222,10 +224,9 @@ __global__ void update_pair_index(int N, int* input, int* output) {
     
     __shared__ int input_copy[THREADS_PER_BLOCK + 1];
     int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int copy_index = threadIdx.x + 1;
 
     if (index < N) {
-        int copy_index = threadIdx.x + 1;
-
         if (copy_index == 1) {
             input_copy[copy_index] = input[index];
             if (index > 0) {
@@ -236,11 +237,13 @@ __global__ void update_pair_index(int N, int* input, int* output) {
         } else {
             input_copy[copy_index] = input[index];
         }
+    }
 
-        __syncthreads();
+    __syncthreads();
 
+    if (index < N) {
         if (input_copy[copy_index] > input_copy[copy_index - 1]) {
-            output[input_copy[copy_index] - 1] = index - 1;
+            output[input_copy[copy_index] - 1] = index;
         }
     }
 }
