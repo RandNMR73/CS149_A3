@@ -22,13 +22,14 @@ A general overview of the algorithm using the tiling method is given below:
     2. Sort this index-to-tile array by tile number (can be done with thrust::merge_sort for structs) --> returns tile-to-index array
     3. Run parallel prefix scan on the tile-to-index array to get list of tile-to-starting-index in the previous tile-to-index array (apply stream compaction algorithm 39.3.1 in https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda) --> returns tile-to-starting-index array
 - Pixel updates
-    1. Iterate over `n * n` tiles subsections in the image (batch processing of tiles allows reuse of data around the edges)
+    1. Iterate over the tiles in the image (two main ways to do this)
+        - First way is the naive approach of iterating over the tiles by rows first then columns (similar to a standard )
+        - Second way is to iterate over larger `n * n` sections of tiles, and then iterating over the tiles within each subsection. This method is more efficient since updating the pixels in one tile has dependencies on the 8 adjacent tiles, and iterating over the tiles in this pattern more optimally uses the cache with these dependencies.
     2. For ordering condition, need to find all circles which intersect with a particular tile (this is not just the circles with centers mapped to this tile!)
         - Need to iterate over the 8 adjacent tiles to consider every possible circle that intersects the specified tile
-        - Then sort combined list of circle indices to maintain and process in order
-        - When iterating over the batch of tiles, need to consider `(n + 2) * (n + 2)` tiles to account for border effects
+        - Then sort combined list of circle indices to process circle updates in order
     3. Launch kernel to update pixel values in the tile
-        - First create shared memory (within the block) for all pixels in the tile
+        - First create shared memory (within the block) for all pixels of the tile
         - Iterate over sorted list of circle indices for the tile (as calculated above) and make the pixel updates in the proper order
 
 <!--
@@ -84,3 +85,7 @@ Will add later (these optimizations come from suggestions made throughout the co
 | ![](image-1.png) |
 |:--:| 
 | *Assignment 3 instructions, pixel updates based on circle* |
+
+| ![](optimal_iteration.jpeg) |
+|:--:|
+| *Slide 43/69 in CS 149: Performance Optimization II lecture, temporal locality of grid traversal* |
