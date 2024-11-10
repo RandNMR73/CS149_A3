@@ -42,8 +42,14 @@ __global__ void scan_upsweep_kernel(int num_iter, int two_d, int two_dplus1, int
 
     if (index < num_iter) {
         int i = index * two_dplus1;
-        result[i+two_dplus1-1] += reuslt[i+two_d-1];
+        result[i+two_dplus1-1] += result[i+two_d-1];
     }
+
+    __syncthreads();
+
+    if (num_iter == 1) {
+		result[2 * two_d - 1] = 0;
+	}
 }
 
 __global__ void scan_downsweep_kernel(int num_iter, int two_d, int two_dplus1, int* result) {
@@ -87,25 +93,32 @@ void exclusive_scan(int* input, int N, int* result) {
     // copy input to result
     int blocks = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     copy<<<blocks, THREADS_PER_BLOCK>>>(N, input, result);
+	
+	std::cout << "after copy statement\n";
 
     // upsweep phase
     for (int two_d = 1; two_d <= N/2; two_d*=2) {
+		std::cout << "before upsweep " << two_d << "\n";
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
         blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+		
 
         scan_upsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
+    	std::cout << "after upsweep " << two_d << "\n";
     }
 
-    result[N-1] = 0;
+    // result[N-1] = 0;
 
     // downsweep phase
     for (int two_d = N/2; two_d >= 1; two_d /= 2) {
+		std::cout << "before downsweep " << two_d << "\n";
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
         blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
         scan_downsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
+    	std::cout << "after downsweep " << two_d << "\n";
     }
 }
 
