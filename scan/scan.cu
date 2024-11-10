@@ -283,7 +283,7 @@ int find_repeats(int* device_input, int length, int* device_output) {
 
     // update output phase
     int num_repeats = 0;
-    cudaMemcpy(&num_repeats, device_input + length - 1, 1 * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&num_repeats, device_input + orig_length - 1, 1 * sizeof(int), cudaMemcpyDeviceToHost);
 
     update_pair_index<<<blocks, THREADS_PER_BLOCK>>>(length, device_input, device_output);
 
