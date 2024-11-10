@@ -201,10 +201,9 @@ __global__ void pair_equal_adjacent(int N, int* input, int* output) {
     
     __shared__ int input_copy[THREADS_PER_BLOCK + 1];
     int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int copy_index = threadIdx.x;
 
     if (index < N - 1) {
-        int copy_index = threadIdx.x;
-
         if (copy_index < THREADS_PER_BLOCK - 1) {
             input_copy[copy_index] = input[index];
         } else {
