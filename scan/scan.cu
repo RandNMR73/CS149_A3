@@ -92,7 +92,7 @@ void exclusive_scan(int* input, int N, int* result) {
 
     // copy input to result
     int orig_N = N;
-    N = pow_above_N(orig_N);
+    N = nextPow2(orig_N);
 
     int blocks = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     copy<<<blocks, THREADS_PER_BLOCK>>>(N, input, result);
@@ -271,7 +271,7 @@ int find_repeats(int* device_input, int length, int* device_output) {
     // the actual array length.
 
     int orig_length = length;
-    length = pow_above_N(orig_length);
+    length = nextPow2(orig_length);
 
     int blocks = (length + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
