@@ -3,3 +3,5 @@ saxpy/cudaSaxpy
 
 scan/objs/*
 scan/cudaScan
+
+scan/logs/*

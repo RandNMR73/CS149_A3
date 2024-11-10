@@ -42,8 +42,14 @@ __global__ void scan_upsweep_kernel(int num_iter, int two_d, int two_dplus1, int
 
     if (index < num_iter) {
         int i = index * two_dplus1;
-        result[i+two_dplus1-1] += reuslt[i+two_d-1];
+        result[i+two_dplus1-1] += result[i+two_d-1];
     }
+
+    __syncthreads();
+
+    if (num_iter == 1) {
+		result[2 * two_d - 1] = 0;
+	}
 }
 
 __global__ void scan_downsweep_kernel(int num_iter, int two_d, int two_dplus1, int* result) {
@@ -85,19 +91,20 @@ void exclusive_scan(int* input, int N, int* result) {
     // scan.
 
     // copy input to result
+    int orig_N = N;
+    N = nextPow2(orig_N);
+
     int blocks = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     copy<<<blocks, THREADS_PER_BLOCK>>>(N, input, result);
-
+	
     // upsweep phase
     for (int two_d = 1; two_d <= N/2; two_d*=2) {
         int two_dplus1 = 2*two_d;
         int num_iter = N / two_dplus1;
         blocks = (num_iter + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-
+		
         scan_upsweep_kernel<<<blocks, THREADS_PER_BLOCK>>>(num_iter, two_d, two_dplus1, result);
     }
-
-    result[N-1] = 0;
 
     // downsweep phase
     for (int two_d = N/2; two_d >= 1; two_d /= 2) {
@@ -121,7 +128,7 @@ double cudaScan(int* inarray, int* end, int* resultarray) {
 
     int* device_result;
     int* device_input;
-    int N = end - inarray;  
+    int N = end - inarray;
 
     // This code rounds the arrays provided to exclusive_scan up
     // to a power of 2, but elements after the end of the original
@@ -197,19 +204,22 @@ __global__ void pair_equal_adjacent(int N, int* input, int* output) {
     
     __shared__ int input_copy[THREADS_PER_BLOCK + 1];
     int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int copy_index = threadIdx.x;
 
-    if (index < N - 1) {
-        int copy_index = threadIdx.x;
-
+    if (index < N - 2) {
         if (copy_index < THREADS_PER_BLOCK - 1) {
             input_copy[copy_index] = input[index];
         } else {
             input_copy[copy_index] = input[index];
             input_copy[copy_index + 1] = input[index + 1];
         }
+    } else if (index == N - 1) {
+    	input_copy[copy_index] = input[index];
+    }
 
-        __syncthreads();
+    __syncthreads();
 
+    if (index < N - 1) {
         output[index] = (input_copy[copy_index] == input_copy[copy_index + 1]);
     }
 }
@@ -218,25 +228,24 @@ __global__ void update_pair_index(int N, int* input, int* output) {
     
     __shared__ int input_copy[THREADS_PER_BLOCK + 1];
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index < N) {
-        int copy_index = threadIdx.x + 1;
-
-        if (copy_index == 1) {
+    int copy_index = threadIdx.x;
+    
+    if (index < N - 1) {
+        if (copy_index < THREADS_PER_BLOCK - 1) {
             input_copy[copy_index] = input[index];
-            if (index > 0) {
-                input_copy[copy_index - 1] = input[index - 1];
-            } else {
-                input_copy[copy_index - 1] = 0;
-            }
         } else {
             input_copy[copy_index] = input[index];
+            input_copy[copy_index + 1] = input[index + 1];
         }
+    } else if (index == N - 1) {
+    	input_copy[copy_index] = input[index];
+    }
 
-        __syncthreads();
+    __syncthreads();
 
-        if (input_copy[copy_index] > input_copy[copy_index - 1]) {
-            output[input_copy[copy_index] - 1] = index - 1;
+    if (index < N - 1) {
+        if (input_copy[copy_index + 1] > input_copy[copy_index]) {
+            output[input_copy[copy_index]] = index;
         }
     }
 }
@@ -261,6 +270,9 @@ int find_repeats(int* device_input, int length, int* device_output) {
     // must ensure that the results of find_repeats are correct given
     // the actual array length.
 
+    int orig_length = length;
+    length = nextPow2(orig_length);
+
     int blocks = (length + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
     // equal pair phase
@@ -270,7 +282,9 @@ int find_repeats(int* device_input, int length, int* device_output) {
     exclusive_scan(device_output, length, device_input);
 
     // update output phase
-    int num_repeats = device_input[length - 1];
+    int num_repeats = 0;
+    cudaMemcpy(&num_repeats, device_input + orig_length - 1, 1 * sizeof(int), cudaMemcpyDeviceToHost);
+
     update_pair_index<<<blocks, THREADS_PER_BLOCK>>>(length, device_input, device_output);
 
     return num_repeats;
@@ -290,7 +304,7 @@ double cudaFindRepeats(int *input, int length, int *output, int *output_length) 
     cudaMalloc((void **)&device_input, rounded_length * sizeof(int));
     cudaMalloc((void **)&device_output, rounded_length * sizeof(int));
     cudaMemcpy(device_input, input, length * sizeof(int), cudaMemcpyHostToDevice);
-
+    
     cudaDeviceSynchronize();
     double startTime = CycleTimer::currentSeconds();
     
