@@ -493,8 +493,8 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
             }
         }
 
-        int pix_x = thrId % tileSize;
-        int pix_y = thrId / tileSize;
+        int pix_x = tileX * tileSize + (thrId % tileSize);
+        int pix_y = tileY * tileSize + (thrId / tileSize);
         float invWidth = 1.f / imageWidth;
         float invHeight = 1.f / imageHeight;
         
