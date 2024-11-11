@@ -453,16 +453,16 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
     float boxT = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
     float boxB = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
 
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    // int index = blockIdx.x * blockDim.x + threadIdx.x;
     int thrId = threadIdx.x;
 
     if (tileNum >= totalTiles)
         return;
     
-    for (int i = 0; i < 1; i += 1024) {
+    for (int i = 0; i < numCircles; i += 1024) {
         int index = i + thrId;
         int index3 = index * 3;
-        if (index < numCircles) {
+        if (index < 1) {
             float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
             float  rad = cuConstRendererParams.radius[index];
 
@@ -480,7 +480,6 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
 
         sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 1024);
         int numInterCirc = prefixSumOutput[1023];
-        bool lastCirc = false;
 
         if (thrId < 1023) {
             if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
