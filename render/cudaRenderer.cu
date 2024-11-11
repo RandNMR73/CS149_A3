@@ -389,11 +389,11 @@ shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
 //
 // Each thread renders a tile. Ordering of circles should be built-in to the algorithm
 __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXRow) {
-    __shared__ uint prefixSumInput[1024];
-    __shared__ uint prefixSumOutput[1024];
-    __shared__ uint prefixSumScratch[2 * 1024];
+    __shared__ uint prefixSumInput[256];
+    __shared__ uint prefixSumOutput[256];
+    __shared__ uint prefixSumScratch[2 * 256];
 
-    __shared__ uint circleIndices[1024];
+    // __shared__ uint circleIndices[1024];
 
     int numCircles = cuConstRendererParams.numCircles;
     short imageWidth = cuConstRendererParams.imageWidth;
@@ -433,19 +433,19 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         __syncthreads();
 
-        sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 1024);
+        sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 256);
 
         __syncthreads();
 
-        int numInterCirc = prefixSumOutput[1023];
+        int numInterCirc = prefixSumOutput[255];
 
-        if (thrId < 1023) {
+        if (thrId < 255) {
             if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
-                circleIndices[prefixSumOutput[thrId]] = thrId;
+                prefixSumScratch[prefixSumOutput[thrId]] = thrId;
             }
         } else {
-            if (prefixSumInput[1023] == 1) {
-                circleIndices[numInterCirc] = thrId;
+            if (prefixSumInput[255] == 1) {
+                prefixSumScratch[numInterCirc] = thrId;
                 numInterCirc++;
             }
         }
@@ -461,7 +461,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
                                                  invHeight * (static_cast<float>(pix_y) + 0.5f));
 
         for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = circleIndices[j];
+            int index_circ = prefixSumScratch[j];
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
@@ -683,7 +683,7 @@ CudaRenderer::advanceAnimation() {
 void
 CudaRenderer::render() {
 
-    short tileSize = 32;
+    short tileSize = 16;
     int tilesPerXRow = (image->width - 1) / static_cast<int>(tileSize) + 1;
     int tilesPerYCol = (image->height - 1) / static_cast<int>(tileSize) + 1;
     int totalTiles = tilesPerXRow * tilesPerYCol;
@@ -696,7 +696,7 @@ CudaRenderer::render() {
     std::cout << "total tiles: " << totalTiles << std::endl;
 
     // 1024 threads per block is a healthy number
-    dim3 blockDim(1024);
+    dim3 blockDim(256);
     dim3 gridDim(totalTiles);
 
     kernelRenderCircles<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
