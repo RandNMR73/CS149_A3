@@ -480,6 +480,9 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
         __syncthreads();
 
         sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 1024);
+
+        __syncthreads();
+        
         int numInterCirc = prefixSumOutput[1023];
 
         if (thrId < 1023) {
@@ -736,8 +739,8 @@ CudaRenderer::render() {
     std::cout << "total tiles: " << totalTiles << std::endl;
 
     // 1024 threads per block is a healthy number
-    dim3 blockDim(1024, 1);
-    dim3 gridDim(totalTiles, 1);
+    dim3 blockDim(1024);
+    dim3 gridDim(totalTiles);
 
     kernelRenderCircles2<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
     cudaDeviceSynchronize();
