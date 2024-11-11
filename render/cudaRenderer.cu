@@ -16,6 +16,8 @@
 
 #define SCAN_BLOCK_DIM   1024  // needed by sharedMemExclusiveScan implementation
 #include "exclusiveScan.cu_inl"
+#include "circleBoxTest.cu_inl"
+
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // Putting all the cuda kernels here
@@ -442,10 +444,13 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
     int tileX = tileNum % tilesPerXRow;
     int tileY = tileNum / tilesPerXRow;
 
-    float boxL = static_cast<float>(tileX * tileSize) / imageWidth;
-    float boxR = static_cast<float>((tileX + 1) * tileSize) / imageWidth;
-    float boxT = static_cast<float>(tileY * tileSize) / imageHeight;
-    float boxB = static_cast<float>((tileY + 1) * tileSize) / imageHeight;
+    short imageWidth = cuConstRendererParams.imageWidth;
+    short imageHeight = cuConstRendererParams.imageHeight;
+
+    float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
+    float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
+    float boxT = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
+    float boxB = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
 
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int thrId = threadIdx.x;
@@ -716,8 +721,8 @@ void
 CudaRenderer::render() {
 
     short tileSize = 32;
-    int tilesPerXRow = (image->width - 1) / static_cast<int>(pixelTileSize) + 1;
-    int tilesPerYCol = (image->height - 1) / static_cast<int>(pixelTileSize) + 1;
+    int tilesPerXRow = (image->width - 1) / static_cast<int>(tileSize) + 1;
+    int tilesPerYCol = (image->height - 1) / static_cast<int>(tileSize) + 1;
     int totalTiles = tilesPerXRow * tilesPerYCol;
 
     // 1024 threads per block is a healthy number
