@@ -7,15 +7,16 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <driver_functions.h>
+#include <thrust/device_ptr.h>
+#include <thrust/extrema.h>
+#include <thrust/sort.h>
+#include <thrust/unique.h>
 
 #include "cudaRenderer.h"
 #include "image.h"
 #include "noise.h"
 #include "sceneLoader.h"
 #include "util.h"
-
-#define SCAN_BLOCK_DIM   1024  // needed by sharedMemExclusiveScan implementation
-#include "exclusiveScan.cu_inl"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // Putting all the cuda kernels here
@@ -30,6 +31,10 @@ struct GlobalConstants {
     float* velocity;
     float* color;
     float* radius;
+    short* tiles;
+    int* circleInds;
+    int* tileCircleStart;
+    int* tileCircleMap;
 
     int imageWidth;
     int imageHeight;
@@ -430,80 +435,51 @@ __global__ void kernelRenderCircles() {
     }
 }
 
-// kernelRenderCircles -- (CUDA device code)
-//
-// Each thread renders a tile. Ordering of circles should be built-in to the algorithm
-__global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerXRow) {
-    __shared__ uint prefixSumInput[1024];
-    __shared__ uint prefixSumOutput[1024];
-    __shared__ uint prefixSumScratch[2 * 1024];
-
-    int tileNum = blockIdx.x;
-    int tileX = tileNum % tilesPerXRow;
-    int tileY = tileNum / tilesPerXRow;
-
-    float boxL = static_cast<float>(tileX * tileSize) / imageWidth;
-    float boxR = static_cast<float>((tileX + 1) * tileSize) / imageWidth;
-    float boxT = static_cast<float>(tileY * tileSize) / imageHeight;
-    float boxB = static_cast<float>((tileY + 1) * tileSize) / imageHeight;
+__global__ void kernelUpdateCircles(short pixelTileSize, short tileXSize) {
 
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int thrId = threadIdx.x;
 
-    if (tileNum >= totalTiles)
+    if (index >= cuConstRendererParams.numCircles)
+        return;
+
+    int index3 = 3 * index;
+
+    // read position
+    float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
+
+    // compute the pixel of the circle center
+    short imageWidth = cuConstRendererParams.imageWidth;
+    short imageHeight = cuConstRendererParams.imageHeight;
+    short x = static_cast<short>(imageWidth * p.x);
+    short y = static_cast<short>(imageHeight * p.y);
+
+    // account for case where the circle's center is not on the screen
+    if (x > imageWidth) x = imageWidth - 1;
+    else if (x < 0) x = 0;
+
+    if (y > imageWidth) y = imageHeight - 1;
+    else if (y < 0) y = 0;
+
+    short tileX = x / pixelTileSize;
+    short tileY = y / pixelTileSize;
+    short tileInd = tileXSize * tileY + tileX;
+
+    cuConstRendererParams.tiles[index] = tileInd;
+    cuConstRendererParams.circleInds[index] = index;
+    cuConstRendererParams.tileCircleStart[index] = index;
+}
+
+__global__ void kernelUpdateTileCounts(int numNonemptyTiles, int totalTiles) {
+    __shared__ int circleStartCopy[256 + 1];
+
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (index )
         return;
     
-    for (int i = 0; i < numCircles; i += 1024) {
-        int index = i + thrId;
-        int index3 = index * 3;
-        if (index < numCircles) {
-            float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
-            float  rad = cuConstRendererParams.radius[index];
-
-            int flag = circleInBoxConservative(p.x, p.y, rad, boxL, boxR, boxT, boxB);
-            if (flag == 1) {
-                flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
-            }
-            
-            prefixSumInput[thrId] = flag;
-        } else {
-            prefixSumInput[thrId] = 0;
-        }
-
-        __syncthreads();
-
-        sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 1024);
-        int numInterCirc = prefixSumOutput[1023];
-        bool lastCirc = false;
-
-        if (thrId < 1023) {
-            if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
-                prefixSumScratch[prefixSumOutput[thrId]] = thrId;
-            }
-        } else {
-            if (prefixSumInput[1023] == 1) {
-                prefixSumScratch[numInterCirc] = thrId;
-                numInterCirc++;
-            }
-        }
-
-        int pix_x = thrId % tileSize;
-        int pix_y = thrId / tileSize;
-        float invWidth = 1.f / imageWidth;
-        float invHeight = 1.f / imageHeight;
-        
-        float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
-        float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
-                                                 invHeight * (static_cast<float>(pix_y) + 0.5f));
-
-        for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = prefixSumScratch[j];
-            int index3_circ = 3 * index_circ;
-            float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
-
-            shadePixel(index_circ, pixelCenterNorm, pcirc, imgPtr);
-        }
-    }
+    __syncthreads();
+    
+    cuConstRendererParams.tileCircleMap[cuConstRendererParams.tiles[index]] = cuConstRendererParams.tileCircleStart[index];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -522,6 +498,10 @@ CudaRenderer::CudaRenderer() {
     cudaDeviceVelocity = NULL;
     cudaDeviceColor = NULL;
     cudaDeviceRadius = NULL;
+    cudaDeviceTiles = NULL;
+    cudaDeviceCircleInds = NULL;
+    cudaDeviceTileCircleStart = NULL;
+    cudaDeviceTileCircleMap = NULL;
     cudaDeviceImageData = NULL;
 }
 
@@ -543,6 +523,10 @@ CudaRenderer::~CudaRenderer() {
         cudaFree(cudaDeviceVelocity);
         cudaFree(cudaDeviceColor);
         cudaFree(cudaDeviceRadius);
+        cudaFree(cudaDeviceTiles);
+        cudaFree(cudaDeviceCircleInds);
+        cudaFree(cudaDeviceTileCircleStart);
+        cudaFree(cudaDeviceTileCircleMap);
         cudaFree(cudaDeviceImageData);
     }
 }
@@ -603,12 +587,23 @@ CudaRenderer::setup() {
     cudaMalloc(&cudaDeviceVelocity, sizeof(float) * 3 * numCircles);
     cudaMalloc(&cudaDeviceColor, sizeof(float) * 3 * numCircles);
     cudaMalloc(&cudaDeviceRadius, sizeof(float) * numCircles);
+    cudaMalloc(&cudaDeviceTiles, sizeof(short) * numCircles);
+    cudaMalloc(&cudaDeviceCircleInds, sizeof(int) * numCircles);
+    cudaMalloc(&cudaDeviceTileCircleStart, sizeof(int) * numCircles);
+
+    short pixelTileSize = 64;
+    short tileXSize = static_cast<short>(image->width) / pixelTileSize + 1;
+    short tileYSize = static_cast<short>(image->height) / pixelTileSize + 1;
+    short totalTiles = tileXSize * tileYSize;
+
+    cudaMalloc(&cudaDeviceTileCircleMap, sizeof(int) * static_cast<size_t>(totalTiles));
     cudaMalloc(&cudaDeviceImageData, sizeof(float) * 4 * image->width * image->height);
 
     cudaMemcpy(cudaDevicePosition, position, sizeof(float) * 3 * numCircles, cudaMemcpyHostToDevice);
     cudaMemcpy(cudaDeviceVelocity, velocity, sizeof(float) * 3 * numCircles, cudaMemcpyHostToDevice);
     cudaMemcpy(cudaDeviceColor, color, sizeof(float) * 3 * numCircles, cudaMemcpyHostToDevice);
     cudaMemcpy(cudaDeviceRadius, radius, sizeof(float) * numCircles, cudaMemcpyHostToDevice);
+    cudaMemset(cudaDeviceTileCircleMap, 0, sizeof(int) * static_cast<size_t>(totalTiles));
 
     // Initialize parameters in constant memory.  We didn't talk about
     // constant memory in class, but the use of read-only constant
@@ -627,6 +622,10 @@ CudaRenderer::setup() {
     params.velocity = cudaDeviceVelocity;
     params.color = cudaDeviceColor;
     params.radius = cudaDeviceRadius;
+    params.tiles = cudaDeviceTiles;
+    params.circleInds = cudaDeviceCircleInds;
+    params.tileCircleStart = cudaDeviceTileCircleStart;
+    params.tileCircleMap = cudaDeviceTileCircleMap;
     params.imageData = cudaDeviceImageData;
 
     cudaMemcpyToSymbol(cuConstRendererParams, &params, sizeof(GlobalConstants));
@@ -715,15 +714,55 @@ CudaRenderer::advanceAnimation() {
 void
 CudaRenderer::render() {
 
-    short tileSize = 32;
-    int tilesPerXRow = (image->width - 1) / static_cast<int>(pixelTileSize) + 1;
-    int tilesPerYCol = (image->height - 1) / static_cast<int>(pixelTileSize) + 1;
-    int totalTiles = tilesPerXRow * tilesPerYCol;
+    // 256 threads per block is a healthy number
+    dim3 blockDim(256, 1);
 
-    // 1024 threads per block is a healthy number
-    dim3 blockDim(1024, 1);
-    dim3 gridDim(totalTiles, 1);
+    // find maximum radius of circles
+    thrust::device_ptr<float> rad_ptr = thrust::device_pointer_cast(cuConstRendererParams.radius);
+    thrust::device_ptr<float> max_rad_ptr = thrust::max_element(rad_ptr, rad_ptr + numCircles);
 
-    kernelRenderCircles2<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
+    float max_rad;
+    cudaMemcpy(&max_rad, max_rad_ptr.get(), sizeof(float), cudaMemcpyDeviceToHost);
+    
+    // calculate respective tile size (pixel version and float version)
+    short pixelTileSize = 64;
+    short tileXSearch = static_cast<short>(image->width * max_rad) / pixelTileSize + 1;
+    short tileYSearch = static_cast<short>(image->height * max_rad) / pixelTileSize + 1;
+
+    short tileXSize = static_cast<short>(image->width) / pixelTileSize + 1;
+    short tileYSize = static_cast<short>(image->height) / pixelTileSize + 1;
+
+    // update circles kernel
+    dim3 gridDim((numCircles + blockDim.x - 1) / blockDim.x);
+
+    kernelUpdateCircles<<<gridDim, blockDim>>>(pixelTileSize, tileXSize);
     cudaDeviceSynchronize();
+
+    // sort (tile, circle) key-val pairs
+    thrust::device_ptr<short> tiles_ptr = thrust::device_pointer_cast(cuConstRendererParams.tiles);
+    thrust::device_ptr<int> circle_inds_ptr = thrust::device_pointer_cast(cuConstRendererParams.circleInds);
+    thrust::stable_sort_by_key(tiles_ptr, tiles_ptr + numCircles, circle_inds_ptr, thrust::less<short>());
+
+    thrust::pair<int*,int*> new_tile_end;
+    thrust::device_ptr<int> tile_circle_start_ptr = thrust::device_pointer_cast(cuConstRendererParams.tileCircleStart);
+    new_tile_end = thrust::unique_by_key(tiles_ptr, tiles_ptr + numCircles, tile_circle_start_ptr);
+
+    // create map of tile index to circle index start
+    short totalTiles = tileXSize * tileYSize;
+    int numNonemptyTiles = new_tile_end.first - tiles_ptr;
+    dim3 tileUpdateDim((numNonemptyTiles + blockDim.x - 1) / blockDim.x);
+    kernelUpdateTileCounts<<<tileUpdateDim, blockDim>>>(numNonemptyTiles, totalTiles);
+
+    // The first four keys in A are now {1, 3, 2, 1} and new_end.first - A is 4.
+    // The first four values in B are now {9, 8, 5, 3} and new_end.second - B is 4.
+
+    // loop over possible tiles and call update pixels in tile kernel
+    int pixelsPerTile = static_cast<int>(pixelTileSize) * static_cast<int>(pixelTileSize);
+    dim3 tileGridDim((pixelsPerTile + blockDim.x - 1) / blockDim.x);
+
+    // need to add cache-friendly iteration
+    for (short tileInd = 0; tileInd < totalTiles; tileInd++) {
+        kernelUpdateTile<<<tileGridDim, blockDim>>>(pixelTileSize, tileXSize, tileXSearch, tileYSearch);
+    }
 }
+

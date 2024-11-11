@@ -14,9 +14,6 @@
 #include "sceneLoader.h"
 #include "util.h"
 
-#define SCAN_BLOCK_DIM   1024  // needed by sharedMemExclusiveScan implementation
-#include "exclusiveScan.cu_inl"
-
 ////////////////////////////////////////////////////////////////////////////////////////
 // Putting all the cuda kernels here
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -430,82 +427,6 @@ __global__ void kernelRenderCircles() {
     }
 }
 
-// kernelRenderCircles -- (CUDA device code)
-//
-// Each thread renders a tile. Ordering of circles should be built-in to the algorithm
-__global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerXRow) {
-    __shared__ uint prefixSumInput[1024];
-    __shared__ uint prefixSumOutput[1024];
-    __shared__ uint prefixSumScratch[2 * 1024];
-
-    int tileNum = blockIdx.x;
-    int tileX = tileNum % tilesPerXRow;
-    int tileY = tileNum / tilesPerXRow;
-
-    float boxL = static_cast<float>(tileX * tileSize) / imageWidth;
-    float boxR = static_cast<float>((tileX + 1) * tileSize) / imageWidth;
-    float boxT = static_cast<float>(tileY * tileSize) / imageHeight;
-    float boxB = static_cast<float>((tileY + 1) * tileSize) / imageHeight;
-
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int thrId = threadIdx.x;
-
-    if (tileNum >= totalTiles)
-        return;
-    
-    for (int i = 0; i < numCircles; i += 1024) {
-        int index = i + thrId;
-        int index3 = index * 3;
-        if (index < numCircles) {
-            float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
-            float  rad = cuConstRendererParams.radius[index];
-
-            int flag = circleInBoxConservative(p.x, p.y, rad, boxL, boxR, boxT, boxB);
-            if (flag == 1) {
-                flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
-            }
-            
-            prefixSumInput[thrId] = flag;
-        } else {
-            prefixSumInput[thrId] = 0;
-        }
-
-        __syncthreads();
-
-        sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 1024);
-        int numInterCirc = prefixSumOutput[1023];
-        bool lastCirc = false;
-
-        if (thrId < 1023) {
-            if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
-                prefixSumScratch[prefixSumOutput[thrId]] = thrId;
-            }
-        } else {
-            if (prefixSumInput[1023] == 1) {
-                prefixSumScratch[numInterCirc] = thrId;
-                numInterCirc++;
-            }
-        }
-
-        int pix_x = thrId % tileSize;
-        int pix_y = thrId / tileSize;
-        float invWidth = 1.f / imageWidth;
-        float invHeight = 1.f / imageHeight;
-        
-        float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
-        float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
-                                                 invHeight * (static_cast<float>(pix_y) + 0.5f));
-
-        for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = prefixSumScratch[j];
-            int index3_circ = 3 * index_circ;
-            float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
-
-            shadePixel(index_circ, pixelCenterNorm, pcirc, imgPtr);
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -715,15 +636,10 @@ CudaRenderer::advanceAnimation() {
 void
 CudaRenderer::render() {
 
-    short tileSize = 32;
-    int tilesPerXRow = (image->width - 1) / static_cast<int>(pixelTileSize) + 1;
-    int tilesPerYCol = (image->height - 1) / static_cast<int>(pixelTileSize) + 1;
-    int totalTiles = tilesPerXRow * tilesPerYCol;
+    // 256 threads per block is a healthy number
+    dim3 blockDim(256, 1);
+    dim3 gridDim((numCircles + blockDim.x - 1) / blockDim.x);
 
-    // 1024 threads per block is a healthy number
-    dim3 blockDim(1024, 1);
-    dim3 gridDim(totalTiles, 1);
-
-    kernelRenderCircles2<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
+    kernelRenderCircles<<<gridDim, blockDim>>>();
     cudaDeviceSynchronize();
 }
