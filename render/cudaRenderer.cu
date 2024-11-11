@@ -508,6 +508,8 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
 
             shadePixel(index_circ, pixelCenterNorm, pcirc, imgPtr);
         }
+
+        __syncthreads();
     }
 }
 
