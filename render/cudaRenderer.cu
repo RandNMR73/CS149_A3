@@ -440,12 +440,13 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
     __shared__ uint prefixSumOutput[1024];
     __shared__ uint prefixSumScratch[2 * 1024];
 
-    int tileNum = blockIdx.x;
-    int tileX = tileNum % tilesPerXRow;
-    int tileY = tileNum / tilesPerXRow;
-
+    int numCircles = cuConstRendererParams.numCircles;
     short imageWidth = cuConstRendererParams.imageWidth;
     short imageHeight = cuConstRendererParams.imageHeight;
+
+    int tileNum = blockIdx.x;
+    int tileX = tileNum % tilesPerXRow;
+    int tileY = tileNum / tilesPerXRow;    
 
     float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
     float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
