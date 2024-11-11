@@ -403,7 +403,10 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
     int tileX = tileNum % tilesPerXRow;
     int tileY = tileNum / tilesPerXRow;    
 
-    
+    float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
+    float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
+    float boxB = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
+    float boxT = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
 
     // int index = blockIdx.x * blockDim.x + threadIdx.x;
     int thrId = threadIdx.x;
@@ -415,11 +418,6 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
             float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
             float  rad = cuConstRendererParams.radius[index];
 
-            float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
-            float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
-            float boxB = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
-            float boxT = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
-
             int flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
             if (flag == 1) {
                 flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
@@ -429,6 +427,10 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         } else {
             prefixSumInput[thrId] = 0;
         }
+
+        prefixSumOutput[thrId] = 0;
+        prefixSumScratch[2 * thrId] = 0;
+        prefixSumScratch[2 * thrId + 1] = 0;
 
         __syncthreads();
 
