@@ -410,9 +410,6 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
     // int index = blockIdx.x * blockDim.x + threadIdx.x;
     int thrId = threadIdx.x;
-
-    if (tileNum >= totalTiles)
-        return;
     
     for (int i = 0; i < numCircles; i += blockDim.x) {
         int index = i + thrId;
