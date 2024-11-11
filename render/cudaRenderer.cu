@@ -454,6 +454,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         float invHeight = 1.f / imageHeight;
         
         float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
+        float4 localPixel = *imgPtr;
         float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
                                                  invHeight * (static_cast<float>(pix_y) + 0.5f));
 
@@ -462,9 +463,10 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
-            shadePixel(index_circ, pixelCenterNorm, pcirc, imgPtr);
-            __syncthreads();
+            shadePixel(index_circ, pixelCenterNorm, pcirc, &localPixel);
         }
+
+        *imgPtr = localPixel;
 
         __syncthreads();
     }
