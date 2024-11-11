@@ -21,6 +21,7 @@ A general overview of the algorithm using the tiling method is given below:
     1. Iterate over the circles and create an array mapping `circle index` to the tile where the circle's center lies --> returns index-to-tile array
     2. Sort this index-to-tile array by tile number (can be done with thrust::merge_sort for structs) --> returns tile-to-index array
     3. Run parallel prefix scan on the tile-to-index array to get list of tile-to-starting-index in the previous tile-to-index array (apply stream compaction algorithm 39.3.1 in https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda) --> returns tile-to-starting-index array
+        - `thrust::unique_by_key`: https://nvidia.github.io/cccl/thrust/api/function_group__stream__compaction_1gada0c4193847ab9e4373178eb59d172c2.html 
 - Pixel updates
     1. Iterate over the tiles in the image (two main ways to do this)
         - First way is the naive approach of iterating over the tiles by rows first then columns (similar to a standard )
@@ -64,6 +65,24 @@ We make use of cache properties by processing tiles in batches, so the tiles clo
 ## Minor CUDA-Specific Optimizations
 Will add later (these optimizations come from suggestions made throughout the code files)
 
+## Optimizations
+Note that all of the following optimization directions are various angles of attack we can potentially pursue. Whether or not we use any of the optimizations below will be determined based on how the algorithm is implemented and what the baseline performance is. 
+
+### Utilizing Tensor Cores 
+Performing the scan operation on tensor cores and generally trying to cast as many of our computations as possible as matrix operations since tensor cores are heavily optimized for this. By default, kernels will be mapped to CUDA Cores unless mixed-precision or matrix operations are used. One way to utilize tensor cores is to use FP16/INT8 precision operations or libraries like CUTLASS/cuBLAS. 
+
+### CUTLASS/cuBLAS
+By casting as many operations as possible in terms of matrices, we can utilized heavily optimized libraries which ran efficiently on NVIDIA GPUs.  
+
+### Coalesced memory access 
+The use of vectorized data types such as `float4` allows each thread to load/store multiple data elements in a single memory transaction which can reduce latency and improve bandwidth utilization, since the number of instructions and memory transactions are reduced. Using types like `float4` also lead to improved alignment of memory accesses (i.e. aligning data to 32, 64, or 128 byte boundaries).    
+
+### Tensor Memory Accelerator   
+The TMA allows you to issue special memory instructions for efficient data movement through the use of asynchronous loads/stores of a portion of a tensor from global to shared memory. The use of asynchronous memory operations on tensor cores can be better than standard memory operations on GPUs in cases where data transfers can be overlapped with actual computation. 
+
+### Thrust 
+Thrust has optimized implementations for operations like scan and sort which will be used in our renderer algorithm. Calling `thrust::sort()` and any other similar functions based on our implementation should lead to a performance boost. 
+
 ## Useful Diagrams
 | ![](<Screenshot from 2024-11-10 03-59-48.png>) |
 |:--:| 
@@ -75,7 +94,7 @@ Will add later (these optimizations come from suggestions made throughout the co
 
 | ![](<Screenshot from 2024-11-10 04-01-56.png>) |
 |:--:| 
-| *Slide 46/51 in CS 149: Data-Parallel Thinking lecture, data-parallel particle processing* |
+| *Slide 46/51 in CS 149: Data-Parallel Thinking lecture, data-parallel particle processing* 
 
 
 | ![](image.png) |
