@@ -727,6 +727,13 @@ CudaRenderer::render() {
     int tilesPerYCol = (image->height - 1) / static_cast<int>(tileSize) + 1;
     int totalTiles = tilesPerXRow * tilesPerYCol;
 
+    std::cout << "image width: " << image->width << std::endl;
+    std::cout << "image height: " << image->height << std::endl;
+    std::cout << "tile size: " << tileSize << std::endl;
+    std::cout << "tile per x row: " << tilesPerXRow << std::endl;
+    std::cout << "tile per y col: " << tilesPerYCol << std::endl;
+    std::cout << "total tiles: " << totalTiles << std::endl;
+
     // 1024 threads per block is a healthy number
     dim3 blockDim(1024, 1);
     dim3 gridDim(totalTiles, 1);
