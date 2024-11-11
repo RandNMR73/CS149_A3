@@ -452,23 +452,26 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         int pix_x = tileX * tileSize + (thrId % tileSize);
         int pix_y = tileY * tileSize + (thrId / tileSize);
-        float invWidth = 1.f / imageWidth;
-        float invHeight = 1.f / imageHeight;
         
-        float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
-        float4 localPixel = *imgPtr;
-        float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
-                                                 invHeight * (static_cast<float>(pix_y) + 0.5f));
+        if (pix_x >= imageWidth || pix_y >= imageHeight) {
+            float invWidth = 1.f / imageWidth;
+            float invHeight = 1.f / imageHeight;
+            
+            float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
+            float4 localPixel = *imgPtr;
+            float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
+                                                    invHeight * (static_cast<float>(pix_y) + 0.5f));
 
-        for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = prefixSumScratch[j];
-            int index3_circ = 3 * index_circ;
-            float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
+            for (int j = 0; j < numInterCirc; j++) {
+                int index_circ = prefixSumScratch[j];
+                int index3_circ = 3 * index_circ;
+                float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
-            shadePixel(index_circ, pixelCenterNorm, pcirc, &localPixel);
+                shadePixel(index_circ, pixelCenterNorm, pcirc, &localPixel);
+            }
+
+            *imgPtr = localPixel;
         }
-
-        *imgPtr = localPixel;
 
         __syncthreads();
     }
