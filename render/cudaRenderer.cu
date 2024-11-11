@@ -453,7 +453,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         int pix_x = tileX * tileSize + (thrId % tileSize);
         int pix_y = tileY * tileSize + (thrId / tileSize);
         
-        if (pix_x >= imageWidth || pix_y >= imageHeight) {
+        if (pix_x < imageWidth && pix_y < imageHeight) {
             float invWidth = 1.f / imageWidth;
             float invHeight = 1.f / imageHeight;
             
