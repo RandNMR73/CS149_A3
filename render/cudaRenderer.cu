@@ -387,56 +387,8 @@ shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
 
 // kernelRenderCircles -- (CUDA device code)
 //
-// Each thread renders a circle.  Since there is no protection to
-// ensure order of update or mutual exclusion on the output image, the
-// resulting image will be incorrect.
-__global__ void kernelRenderCircles() {
-
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index >= cuConstRendererParams.numCircles)
-        return;
-
-    int index3 = 3 * index;
-
-    // read position and radius
-    float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
-    float  rad = cuConstRendererParams.radius[index];
-
-    // compute the bounding box of the circle. The bound is in integer
-    // screen coordinates, so it's clamped to the edges of the screen.
-    short imageWidth = cuConstRendererParams.imageWidth;
-    short imageHeight = cuConstRendererParams.imageHeight;
-    short minX = static_cast<short>(imageWidth * (p.x - rad));
-    short maxX = static_cast<short>(imageWidth * (p.x + rad)) + 1;
-    short minY = static_cast<short>(imageHeight * (p.y - rad));
-    short maxY = static_cast<short>(imageHeight * (p.y + rad)) + 1;
-
-    // a bunch of clamps.  Is there a CUDA built-in for this?
-    short screenMinX = (minX > 0) ? ((minX < imageWidth) ? minX : imageWidth) : 0;
-    short screenMaxX = (maxX > 0) ? ((maxX < imageWidth) ? maxX : imageWidth) : 0;
-    short screenMinY = (minY > 0) ? ((minY < imageHeight) ? minY : imageHeight) : 0;
-    short screenMaxY = (maxY > 0) ? ((maxY < imageHeight) ? maxY : imageHeight) : 0;
-
-    float invWidth = 1.f / imageWidth;
-    float invHeight = 1.f / imageHeight;
-
-    // for all pixels in the bonding box
-    for (int pixelY=screenMinY; pixelY<screenMaxY; pixelY++) {
-        float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pixelY * imageWidth + screenMinX)]);
-        for (int pixelX=screenMinX; pixelX<screenMaxX; pixelX++) {
-            float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pixelX) + 0.5f),
-                                                 invHeight * (static_cast<float>(pixelY) + 0.5f));
-            shadePixel(index, pixelCenterNorm, p, imgPtr);
-            imgPtr++;
-        }
-    }
-}
-
-// kernelRenderCircles -- (CUDA device code)
-//
 // Each thread renders a tile. Ordering of circles should be built-in to the algorithm
-__global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerXRow) {
+__global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXRow) {
     __shared__ uint prefixSumInput[1024];
     __shared__ uint prefixSumOutput[1024];
     __shared__ uint prefixSumScratch[2 * 1024];
@@ -451,8 +403,8 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
 
     float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
     float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
-    float boxT = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
-    float boxB = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
+    float boxB = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
+    float boxT = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
 
     // int index = blockIdx.x * blockDim.x + threadIdx.x;
     int thrId = threadIdx.x;
@@ -742,7 +694,7 @@ CudaRenderer::render() {
     dim3 blockDim(1024);
     dim3 gridDim(totalTiles);
 
-    kernelRenderCircles2<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
+    kernelRenderCircles<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
     // kernelRenderCircles<<<gridDim, blockDim>>>();
     cudaDeviceSynchronize();
 }
