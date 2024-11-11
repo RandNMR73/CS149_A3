@@ -466,7 +466,7 @@ __global__ void kernelRenderCircles2(int tileSize, int totalTiles, int tilesPerX
             float3 p = *(float3*)(&cuConstRendererParams.position[index3]);
             float  rad = cuConstRendererParams.radius[index];
 
-            int flag = circleInBoxConservative(p.x, p.y, rad, boxL, boxR, boxT, boxB);
+            int flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
             // if (flag == 1) {
             //     flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
             // }
