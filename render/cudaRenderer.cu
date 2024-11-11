@@ -393,6 +393,8 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
     __shared__ uint prefixSumOutput[1024];
     __shared__ uint prefixSumScratch[2 * 1024];
 
+    __shared__ uint circleIndices[1024];
+
     int numCircles = cuConstRendererParams.numCircles;
     short imageWidth = cuConstRendererParams.imageWidth;
     short imageHeight = cuConstRendererParams.imageHeight;
@@ -439,11 +441,11 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         if (thrId < 1023) {
             if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
-                prefixSumScratch[prefixSumOutput[thrId]] = thrId;
+                circleIndices[prefixSumOutput[thrId]] = thrId;
             }
         } else {
             if (prefixSumInput[1023] == 1) {
-                prefixSumScratch[numInterCirc] = thrId;
+                circleIndices[numInterCirc] = thrId;
                 numInterCirc++;
             }
         }
@@ -459,7 +461,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
                                                  invHeight * (static_cast<float>(pix_y) + 0.5f));
 
         for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = prefixSumScratch[j];
+            int index_circ = circleIndices[j];
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
