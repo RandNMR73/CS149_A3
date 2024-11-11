@@ -742,7 +742,7 @@ CudaRenderer::render() {
     dim3 blockDim(1024);
     dim3 gridDim(totalTiles);
 
-    // kernelRenderCircles2<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
-    kernelRenderCircles<<<gridDim, blockDim>>>();
+    kernelRenderCircles2<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
+    // kernelRenderCircles<<<gridDim, blockDim>>>();
     cudaDeviceSynchronize();
 }
