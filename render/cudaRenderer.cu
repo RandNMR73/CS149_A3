@@ -463,6 +463,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
             shadePixel(index_circ, pixelCenterNorm, pcirc, imgPtr);
+            __syncthreads();
         }
 
         __syncthreads();
