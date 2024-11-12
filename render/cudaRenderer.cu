@@ -408,10 +408,10 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
     int tileY = tileNum / tilesPerXRow; // 0 to 31
 
     // tile specific information
-    float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
-    float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
-    float boxB = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
-    float boxT = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
+    float boxL = static_cast<float>(tileX * tileSize) * invWidth;
+    float boxR = static_cast<float>((tileX + 1) * invWidth;
+    float boxB = static_cast<float>(tileY * tileSize) * invHeight;
+    float boxT = static_cast<float>((tileY + 1) * tileSize) * invHeight;
 
     // pixel specific information
     int pix_x = tileX * tileSize + (thrId % tileSize);
@@ -429,7 +429,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         localPixel = *imgPtr;
     }
     
-    for (int i = 0; i < numCircles; i += SCAN_BLOCK_DIM) {
+    for (int i = 2048; i < 3072; i += SCAN_BLOCK_DIM) {
         int index = i + thrId;
         int index3 = index * 3;
         if (index < numCircles) {
@@ -707,6 +707,7 @@ CudaRenderer::render() {
     std::cout << "tile per x row: " << tilesPerXRow << std::endl;
     std::cout << "tile per y col: " << tilesPerYCol << std::endl;
     std::cout << "total tiles: " << totalTiles << std::endl;
+    std::cout << "num circles: " << numCircles << std::endl;
 
     // 1024 threads per block is a healthy number
     dim3 blockDim(1024);
