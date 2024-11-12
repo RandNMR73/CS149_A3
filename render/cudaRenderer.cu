@@ -421,7 +421,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
     float4 localPixel;
     float4* imgPtr;
 
-    bool pixelValid = (pix_x < imageWidth) && (pix_y < imageHeight) && (pix_x >= 0) && (pix_y >= 0);
+    bool pixelValid = (pix_x < imageWidth) && (pix_y < imageHeight);
     float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
                                         invHeight * (static_cast<float>(pix_y) + 0.5f));
 
