@@ -409,7 +409,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
     // tile specific information
     float boxL = static_cast<float>(tileX * tileSize) * invWidth;
-    float boxR = static_cast<float>((tileX + 1) * invWidth;
+    float boxR = static_cast<float>((tileX + 1) * tileSize) * invWidth;
     float boxB = static_cast<float>(tileY * tileSize) * invHeight;
     float boxT = static_cast<float>((tileY + 1) * tileSize) * invHeight;
 
