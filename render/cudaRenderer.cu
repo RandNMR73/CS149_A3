@@ -467,8 +467,8 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         __syncthreads();
 
         // All threads process all circles to maintain synchronization
-        for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = i + prefixSumScratch[j];
+        for (int j = 0; j < numCircles; j++) {
+            int index_circ = j; // i + prefixSumScratch[j];
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
@@ -478,6 +478,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         }
 
         __syncthreads();
+        break;
     }
 
     // Write back result only for valid pixels
