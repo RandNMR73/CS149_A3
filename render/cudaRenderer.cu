@@ -403,6 +403,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
     // thread and block specific information
     int thrId = threadIdx.x; // 0 to 1023
+    int numThr = blockDim.x; // 1024
     int tileNum = blockIdx.x; // 0 to 1023
     int tileX = tileNum % tilesPerXRow; // 0 to 31
     int tileY = tileNum / tilesPerXRow; // 0 to 31
@@ -429,7 +430,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         localPixel = *imgPtr;
     }
     
-    for (int i = 0; i < numCircles; i += SCAN_BLOCK_DIM) {
+    for (int i = 0; i < numCircles; i += numThr) {
         int index = i + thrId;
         int index3 = index * 3;
         if (index < numCircles) {
@@ -454,14 +455,14 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         int numInterCirc = prefixSumOutput[SCAN_BLOCK_DIM - 1];
 
-        if (thrId < 1023) {
-            if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
-                prefixSumScratch[prefixSumOutput[thrId]] = thrId;
-            }
-        } else {
+        if (thrId == numThr - 1) {
             if (prefixSumInput[SCAN_BLOCK_DIM - 1] == 1) {
                 prefixSumScratch[numInterCirc] = thrId;
                 numInterCirc++;
+            }
+        } else {
+            if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
+                prefixSumScratch[prefixSumOutput[thrId]] = thrId;
             }
         }
 
@@ -469,7 +470,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         // All threads process all circles to maintain synchronization
         for (int j = 0; j < numInterCirc; j++) {
-            int index_circ = prefixSumScratch[j];
+            int index_circ = i + prefixSumScratch[j];
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
@@ -710,7 +711,7 @@ CudaRenderer::render() {
     std::cout << "num circles: " << numCircles << std::endl;
 
     // 1024 threads per block is a healthy number
-    dim3 blockDim(1024);
+    dim3 blockDim(SCAN_BLOCK_DIM);
     dim3 gridDim(totalTiles);
 
     kernelRenderCircles<<<gridDim, blockDim>>>(tileSize, totalTiles, tilesPerXRow);
