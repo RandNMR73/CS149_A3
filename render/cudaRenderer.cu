@@ -453,8 +453,8 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         int numInterCirc = prefixSumOutput[SCAN_BLOCK_DIM - 1];
 
         if (thrId == numThr - 1) {
-            prefixSumScratch[numInterCirc] = thrId;
-            numInterCirc++;
+            // prefixSumScratch[numInterCirc] = thrId;
+            // numInterCirc++;
             // if (prefixSumInput[SCAN_BLOCK_DIM - 1] == 1) {
                 
             // }
@@ -467,8 +467,18 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         __syncthreads();
 
         // All threads process all circles to maintain synchronization
-        for (int j = 0; j < numCircles; j++) {
-            int index_circ = j; // i + prefixSumScratch[j];
+        for (int j = 0; j < numInterCirc; j++) {
+            int index_circ = i + prefixSumScratch[j];
+            int index3_circ = 3 * index_circ;
+            float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
+
+            if (pixelValid) {
+                shadePixel(index_circ, pixelCenterNorm, pcirc, &localPixel);
+            }
+        }
+
+        if (i + numThr - 1 < numCircles) {
+            int index_circ = i + numThr - 1;
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
@@ -478,7 +488,6 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         }
 
         __syncthreads();
-        break;
     }
 
     // Write back result only for valid pixels
