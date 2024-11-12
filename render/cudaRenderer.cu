@@ -389,29 +389,47 @@ shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
 //
 // Each thread renders a tile. Ordering of circles should be built-in to the algorithm
 __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXRow) {
-    __shared__ uint prefixSumInput[1024];
-    __shared__ uint prefixSumOutput[1024];
-    __shared__ uint prefixSumScratch[2 * 1024];
+    __shared__ uint prefixSumInput[SCAN_BLOCK_DIM]; // size 1024
+    __shared__ uint prefixSumOutput[SCAN_BLOCK_DIM]; // size 1024
+    __shared__ uint prefixSumScratch[2 * SCAN_BLOCK_DIM]; // size 2048
 
-    // __shared__ uint circleIndices[1024];
+    // general global parameters
+    int numCircles = cuConstRendererParams.numCircles; // 10000
+    short imageWidth = cuConstRendererParams.imageWidth; // 1024
+    short imageHeight = cuConstRendererParams.imageHeight; // 1024
 
-    int numCircles = cuConstRendererParams.numCircles;
-    short imageWidth = cuConstRendererParams.imageWidth;
-    short imageHeight = cuConstRendererParams.imageHeight;
+    float invWidth = 1.f / imageWidth;
+    float invHeight = 1.f / imageHeight;
 
-    int tileNum = blockIdx.x;
-    int tileX = tileNum % tilesPerXRow;
-    int tileY = tileNum / tilesPerXRow;    
+    // thread and block specific information
+    int thrId = threadIdx.x; // 0 to 1023
+    int tileNum = blockIdx.x; // 0 to 1023
+    int tileX = tileNum % tilesPerXRow; // 0 to 31
+    int tileY = tileNum / tilesPerXRow; // 0 to 31
 
+    // tile specific information
     float boxL = static_cast<float>(tileX * tileSize) / static_cast<float>(imageWidth);
     float boxR = static_cast<float>((tileX + 1) * tileSize) / static_cast<float>(imageWidth);
     float boxB = static_cast<float>(tileY * tileSize) / static_cast<float>(imageHeight);
     float boxT = static_cast<float>((tileY + 1) * tileSize) / static_cast<float>(imageHeight);
 
-    // int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int thrId = threadIdx.x;
+    // pixel specific information
+    int pix_x = tileX * tileSize + (thrId % tileSize);
+    int pix_y = tileY * tileSize + (thrId / tileSize);
+
+    float4 localPixel;
+    float4* imgPtr;
+
+    bool pixelValid = (pix_x < imageWidth) && (pix_y < imageHeight) && (pix_x >= 0) && (pix_y >= 0);
+    float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
+                                        invHeight * (static_cast<float>(pix_y) + 0.5f));
+
+    if (pixelValid) {
+        imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
+        localPixel = *imgPtr;
+    }
     
-    for (int i = 1024; i < 2048; i += 1024) {
+    for (int i = 0; i < numCircles; i += SCAN_BLOCK_DIM) {
         int index = i + thrId;
         int index3 = index * 3;
         if (index < numCircles) {
@@ -430,39 +448,23 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         __syncthreads();
 
-        sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, 1024);
+        sharedMemExclusiveScan(thrId, prefixSumInput, prefixSumOutput, prefixSumScratch, SCAN_BLOCK_DIM);
 
         __syncthreads();
 
-        int numInterCirc = prefixSumOutput[1023];
+        int numInterCirc = prefixSumOutput[SCAN_BLOCK_DIM - 1];
 
         if (thrId < 1023) {
             if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
                 prefixSumScratch[prefixSumOutput[thrId]] = thrId;
             }
         } else {
-            if (prefixSumInput[1023] == 1) {
+            if (prefixSumInput[SCAN_BLOCK_DIM - 1] == 1) {
                 prefixSumScratch[numInterCirc] = thrId;
                 numInterCirc++;
             }
         }
 
-        // Process all circles for this tile, even if some pixels are out of bounds
-        int pix_x = tileX * tileSize + (thrId % tileSize);
-        int pix_y = tileY * tileSize + (thrId / tileSize);
-
-        float invWidth = 1.f / imageWidth;
-        float invHeight = 1.f / imageHeight;
-
-        float4 localPixel;
-        if (pix_x < imageWidth && pix_y < imageHeight) {
-            float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
-            localPixel = *imgPtr;
-        }
-
-        float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pix_x) + 0.5f),
-                                            invHeight * (static_cast<float>(pix_y) + 0.5f));
-        
         __syncthreads();
 
         // All threads process all circles to maintain synchronization
@@ -471,18 +473,17 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
             int index3_circ = 3 * index_circ;
             float3 pcirc = *(float3*)(&cuConstRendererParams.position[index3_circ]);
 
-            if (pix_x < imageWidth && pix_y < imageHeight) {
+            if (pixelValid) {
                 shadePixel(index_circ, pixelCenterNorm, pcirc, &localPixel);
             }
         }
 
-        // Write back result only for valid pixels
-        if (pix_x < imageWidth && pix_y < imageHeight) {
-            float4* imgPtr = (float4*)(&cuConstRendererParams.imageData[4 * (pix_y * imageWidth + pix_x)]);
-            *imgPtr = localPixel;
-        }
-
         __syncthreads();
+    }
+
+    // Write back result only for valid pixels
+    if (pixelValid) {
+        *imgPtr = localPixel;
     }
 }
 
