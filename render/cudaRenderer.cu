@@ -429,7 +429,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
         localPixel = *imgPtr;
     }
     
-    for (int i = 2048; i < 3072; i += SCAN_BLOCK_DIM) {
+    for (int i = 0; i < numCircles; i += SCAN_BLOCK_DIM) {
         int index = i + thrId;
         int index3 = index * 3;
         if (index < numCircles) {
