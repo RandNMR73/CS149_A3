@@ -452,13 +452,7 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
         int numInterCirc = prefixSumOutput[SCAN_BLOCK_DIM - 1];
 
-        if (thrId == numThr - 1) {
-            // prefixSumScratch[numInterCirc] = thrId;
-            // numInterCirc++;
-            // if (prefixSumInput[SCAN_BLOCK_DIM - 1] == 1) {
-                
-            // }
-        } else {
+        if (thrId < numThr - 1) {
             if (prefixSumOutput[thrId] < prefixSumOutput[thrId + 1]) {
                 prefixSumScratch[prefixSumOutput[thrId]] = thrId;
             }
