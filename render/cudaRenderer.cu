@@ -441,6 +441,12 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
             if (flag == 1) {
                 flag = circleInBox(p.x, p.y, rad, boxL, boxR, boxT, boxB);
             }
+
+            if (flag == 0) {
+                if (p.x <= boxR && p.x >= boxL && p.y <= boxT && p.y >= boxB) {
+                    flag = 1;
+                }
+            }
             
             prefixSumInput[thrId] = flag;
         } else {
