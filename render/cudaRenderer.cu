@@ -395,8 +395,8 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
 
     // general global parameters
     int numCircles = cuConstRendererParams.numCircles; // 10000
-    short imageWidth = cuConstRendererParams.imageWidth; // 1024
-    short imageHeight = cuConstRendererParams.imageHeight; // 1024
+    int imageWidth = cuConstRendererParams.imageWidth; // 1024
+    int imageHeight = cuConstRendererParams.imageHeight; // 1024
 
     float invWidth = 1.f / imageWidth;
     float invHeight = 1.f / imageHeight;
@@ -409,10 +409,10 @@ __global__ void kernelRenderCircles(int tileSize, int totalTiles, int tilesPerXR
     int tileY = tileNum / tilesPerXRow; // 0 to 31
 
     // tile specific information
-    float boxL = static_cast<float>(tileX * tileSize) * invWidth - 0.01;
-    float boxR = static_cast<float>((tileX + 1) * tileSize) * invWidth + 0.01;
-    float boxB = static_cast<float>(tileY * tileSize) * invHeight - 0.01;
-    float boxT = static_cast<float>((tileY + 1) * tileSize) * invHeight + 0.01;
+    float boxL = static_cast<float>(tileX * tileSize) * invWidth;
+    float boxR = static_cast<float>((tileX + 1) * tileSize) * invWidth;
+    float boxB = static_cast<float>(tileY * tileSize) * invHeight;
+    float boxT = static_cast<float>((tileY + 1) * tileSize) * invHeight;
 
     // pixel specific information
     int pix_x = tileX * tileSize + (thrId % tileSize);
@@ -694,18 +694,18 @@ CudaRenderer::advanceAnimation() {
 void
 CudaRenderer::render() {
 
-    short tileSize = 32;
+    int tileSize = 32;
     int tilesPerXRow = (image->width - 1) / static_cast<int>(tileSize) + 1;
     int tilesPerYCol = (image->height - 1) / static_cast<int>(tileSize) + 1;
     int totalTiles = tilesPerXRow * tilesPerYCol;
 
-    std::cout << "image width: " << image->width << std::endl;
-    std::cout << "image height: " << image->height << std::endl;
-    std::cout << "tile size: " << tileSize << std::endl;
-    std::cout << "tile per x row: " << tilesPerXRow << std::endl;
-    std::cout << "tile per y col: " << tilesPerYCol << std::endl;
-    std::cout << "total tiles: " << totalTiles << std::endl;
-    std::cout << "num circles: " << numCircles << std::endl;
+    // std::cout << "image width: " << image->width << std::endl;
+    // std::cout << "image height: " << image->height << std::endl;
+    // std::cout << "tile size: " << tileSize << std::endl;
+    // std::cout << "tile per x row: " << tilesPerXRow << std::endl;
+    // std::cout << "tile per y col: " << tilesPerYCol << std::endl;
+    // std::cout << "total tiles: " << totalTiles << std::endl;
+    // std::cout << "num circles: " << numCircles << std::endl;
 
     // 1024 threads per block is a healthy number
     dim3 blockDim(SCAN_BLOCK_DIM);
